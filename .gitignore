@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Java / Spring Boot
+target/
+*.class
+*.jar
+*.war
+*.ear
+.mvn/
+mvnw
+mvnw.cmd
+.gradle/
+build/
+bin/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project Specific
+logs/
+*.log
+output/
+inference/
+pretrain_models/
+images/pod_*/ 
+ground_truth.json
+dataset/
+
+# Environment
+.env
+*.local
