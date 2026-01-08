@@ -19,7 +19,7 @@ find "$IMAGE_DIR" -maxdepth 1 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -i
     echo "---" | tee -a "$LOG_FILE"
     
     # Run OCR and capture output
-    result=$(python3 pod_ocr.py "$image" 2>&1)
+    result=$(python3 paddleocr/pod_ocr.py "$image" 2>&1)
     
     # Log the result
     echo "$result" | tee -a "$LOG_FILE"

@@ -29,13 +29,31 @@ pip install -r requirements.txt
 Run the OCR logic on a single image:
 
 ```bash
-python3 pod_ocr.py images/sample.jpg
+python3 paddleocr/pod_ocr.py images/sample.jpg
+```
+
+Run with EasyOCR:
+
+```bash
+python3 easyocr/pod_ocr.py images/sample.jpg
+```
+
+Run with GOT-OCR2.0:
+
+```bash
+python3 got-ocr/pod_ocr.py images/sample.jpg
+```
+
+Run with TrOCR:
+
+```bash
+python3 trocr/pod_ocr.py images/sample.jpg
 ```
 
 Batch process a directory:
 
 ```bash
-python3 pod_ocr.py ./images/ -w 4
+python3 paddleocr/pod_ocr.py ./images/ -w 4
 ```
 
 ---
@@ -77,5 +95,8 @@ The core script and sidecars support the following:
 Run unit tests for regex parsing:
 
 ```bash
-pytest test_pod_ocr.py
+pytest paddleocr/test_pod_ocr.py
+pytest easyocr/test_pod_ocr.py
+pytest got-ocr/test_pod_ocr.py
+pytest trocr/test_pod_ocr.py
 ```
