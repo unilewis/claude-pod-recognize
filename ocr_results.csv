@@ -1,0 +1,25 @@
+filename,image_path,street_number,street_name,unit_number,confidence,processing_time
+pod1.jpg,images/pod1.jpg,,"Dear Customer, This notice serves as proof of delivery for the shipment listed below. Please print for your records as photo and details are only available for a Tracking results provided by UPS: 23.03.2023 12:42 EST",,1.0,4.077
+pod2.jpg,images/pod2.jpg,,,,0.326,0.462
+pod6.jpg,images/pod6.jpg,68,ORCHARD CLOSE,,1.0,1.32
+pod7.jpg,images/pod7.jpg,,Fast delivery Protection,,1.0,88.343
+pod8.jpg,images/pod8.jpg,,100% Electric Jangro,,1.0,4.93
+pod9.jpeg,images/pod9.jpeg,,STREET CITY OF WESTMINSTER,,1.0,0.955
+pod10.jpeg,images/pod10.jpeg,,,,0.0,0.379
+pod11.jpeg,images/pod11.jpeg,8,,,0.979,0.543
+pod21.jpeg,images/pod21.jpeg,657,,,0.968,0.535
+pod22.jpeg,images/pod22.jpeg,8C,,,0.997,0.46
+pod23.jpeg,images/pod23.jpeg,210,,,1.0,0.677
+pod24.jpeg,images/pod24.jpeg,7208,,,1.0,0.462
+pod25.jpg,images/pod25.jpg,,,,0.999,9.151
+pod26.jpeg,images/pod26.jpeg,1303,,,0.997,1.796
+pod28.jpg,images/pod28.jpg,,Credit: Westend61,,1.0,1.258
+pod30.jpeg,images/pod30.jpeg,107,,,0.971,0.465
+pod31.jpeg,images/pod31.jpeg,32,,,0.999,0.512
+pod32.jpeg,images/pod32.jpeg,5040,,,0.994,0.484
+pod33.jpeg,images/pod33.jpeg,,,,0.0,0.384
+pod34.jpeg,images/pod34.jpeg,1024,,,0.999,0.445
+pod36.jpeg,images/pod36.jpeg,106,,,1.0,0.468
+pod37.jpeg,images/pod37.jpeg,209,,,0.999,0.473
+pod40.jpeg,images/pod40.jpeg,,,,0.996,0.617
+pod42.jpeg,images/pod42.jpeg,,,,0.618,0.436

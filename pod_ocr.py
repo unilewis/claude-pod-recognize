@@ -10,6 +10,7 @@ import re
 import json
 import argparse
 import time
+import os
 from pathlib import Path
 from multiprocessing import Pool
 from typing import Optional, Tuple
@@ -23,9 +24,7 @@ def get_ocr():
     global _ocr_instance
     if _ocr_instance is None:
         from paddleocr import PaddleOCR
-        import os
-        use_gpu = os.getenv('USE_GPU', 'False').lower() == 'true'
-        _ocr_instance = PaddleOCR(use_gpu=use_gpu, use_textline_orientation=True, lang='en')
+        _ocr_instance = PaddleOCR(use_textline_orientation=True, lang='en')
     return _ocr_instance
 
 
@@ -116,6 +115,7 @@ def extract_numbers(image_path: str, confidence_threshold: float = 0.95) -> dict
         
         if not result or len(result) == 0:
             return {
+                'image_path': image_path,
                 'street_number': None, 
                 'street_name': None, 
                 'unit_number': None, 
@@ -158,6 +158,8 @@ def extract_numbers(image_path: str, confidence_threshold: float = 0.95) -> dict
             street_name = ' '.join(street_names)
         
         return {
+            'image_path': image_path,
+            'filename': os.path.basename(image_path),
             'street_number': street_number,
             'street_name': street_name,
             'unit_number': unit_number,
@@ -166,6 +168,8 @@ def extract_numbers(image_path: str, confidence_threshold: float = 0.95) -> dict
         }
     except Exception as e:
         return {
+            'image_path': image_path,
+            'filename': os.path.basename(image_path),
             'street_number': None,
             'street_name': None,
             'unit_number': None,
