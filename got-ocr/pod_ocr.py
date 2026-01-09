@@ -83,12 +83,20 @@ def parse_street_name(text: str) -> Optional[str]:
     if re.search(street_types, text, re.IGNORECASE):
         return text.strip()
     
-    if re.match(r'^[A-Z][a-z]{2,}$', text.strip()):
-        excluded = {'The', 'Dear', 'Customer', 'Proof', 'Delivery', 'Tracking', 'Number', 
+    # Normalize text for matching (handle ALL CAPS)
+    normalized = text.strip()
+    
+    # Match proper words: Title Case or ALL CAPS with 3+ letters
+    # Also match ALL CAPS phrases with spaces (e.g., 'NELS ON S')
+    if re.match(r'^[A-Z][a-z]{2,}$', normalized) or re.match(r'^[A-Z]{3,}$', normalized) or re.match(r'^[A-Z][A-Z\s]+[A-Z]$', normalized):
+        excluded = {'THE', 'DEAR', 'CUSTOMER', 'PROOF', 'DELIVERY', 'TRACKING', 'NUMBER', 
+                    'WEIGHT', 'SERVICE', 'SHIPPED', 'BILLED', 'DELIVERED', 'LEFT', 
+                    'REFERENCE', 'PLEASE', 'PRINT', 'SINCERELY', 'FRONT', 'DOOR',
+                    'The', 'Dear', 'Customer', 'Proof', 'Delivery', 'Tracking', 'Number', 
                     'Weight', 'Service', 'Shipped', 'Billed', 'Delivered', 'Left', 
                     'Reference', 'Please', 'Print', 'Sincerely', 'Front', 'Door'}
-        if text.strip() not in excluded:
-            return text.strip()
+        if normalized not in excluded and normalized.upper() not in excluded:
+            return normalized
     
     return None
 
@@ -104,6 +112,54 @@ def extract_numbers(image_path: str, confidence_threshold: float = 0.95) -> dict
     Returns:
         Dictionary with street_number, street_name, unit_number, confidence, and processing_time.
     """
+    start_time = time.time()
+    timeout_seconds = 30  # Timeout after 30 seconds
+    
+    # Use threading for timeout
+    import threading
+    result_container = [None]
+    error_container = [None]
+    
+    def run_ocr():
+        try:
+            result_container[0] = _extract_numbers_impl(image_path, confidence_threshold)
+        except Exception as e:
+            error_container[0] = str(e)
+    
+    thread = threading.Thread(target=run_ocr)
+    thread.start()
+    thread.join(timeout=timeout_seconds)
+    
+    if thread.is_alive():
+        # Timeout occurred
+        return {
+            'image_path': image_path,
+            'filename': os.path.basename(image_path),
+            'street_number': None,
+            'street_name': None,
+            'unit_number': None,
+            'confidence': 0.0,
+            'error': f'Timeout after {timeout_seconds}s',
+            'processing_time': round(time.time() - start_time, 3)
+        }
+    
+    if error_container[0]:
+        return {
+            'image_path': image_path,
+            'filename': os.path.basename(image_path),
+            'street_number': None,
+            'street_name': None,
+            'unit_number': None,
+            'confidence': 0.0,
+            'error': error_container[0],
+            'processing_time': round(time.time() - start_time, 3)
+        }
+    
+    return result_container[0]
+
+
+def _extract_numbers_impl(image_path: str, confidence_threshold: float = 0.95) -> dict:
+    """Internal implementation of extract_numbers."""
     start_time = time.time()
     try:
         import torch
@@ -143,9 +199,33 @@ def extract_numbers(image_path: str, confidence_threshold: float = 0.95) -> dict
                     pass
             torch.autocast = MockAutocast
             
+            # Preprocess image for better OCR (sharpening improves detection)
+            import tempfile
+            import numpy as np
+            preprocessed_path = image_path
             try:
-                res = model.chat(tokenizer, image_path, ocr_type='ocr')
+                img = cv2.imread(image_path)
+                if img is not None:
+                    # Apply sharpening filter
+                    kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+                    sharpened = cv2.filter2D(img, -1, kernel)
+                    # Save to temp file
+                    temp_file = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+                    cv2.imwrite(temp_file.name, sharpened)
+                    preprocessed_path = temp_file.name
+            except Exception:
+                pass  # Fall back to original image if preprocessing fails
+            
+            try:
+                res = model.chat(tokenizer, preprocessed_path, ocr_type='ocr')
             finally:
+                # Clean up temp file if created
+                if preprocessed_path != image_path:
+                    import os as os_mod
+                    try:
+                        os_mod.unlink(preprocessed_path)
+                    except:
+                        pass
                 # Restore patches
                 torch.Tensor.cuda = orig_cuda
                 torch.Tensor.half = orig_half
@@ -175,7 +255,23 @@ def extract_numbers(image_path: str, confidence_threshold: float = 0.95) -> dict
         unit_number = None
         street_names = []
         
-        for i, text in enumerate(extracted_texts):
+        # First pass: combine consecutive ALL CAPS tokens with spaces preserved
+        # (e.g., 'NELS', 'ON', 'S' -> 'NELS ON S')
+        combined_texts = []
+        current_caps_words = []
+        for text in extracted_texts:
+            clean = text.strip('.,;:()[]"')
+            if clean.isupper() and clean.isalpha():
+                current_caps_words.append(clean)
+            else:
+                if current_caps_words:
+                    combined_texts.append(' '.join(current_caps_words))
+                    current_caps_words = []
+                combined_texts.append(clean)
+        if current_caps_words:
+            combined_texts.append(' '.join(current_caps_words))
+        
+        for i, text in enumerate(combined_texts):
             # Clean up punctuation attached to words if necessary, 
             # but existing regexes are strict so stripped punct might be needed.
             # For now, we trust the split.
@@ -185,8 +281,8 @@ def extract_numbers(image_path: str, confidence_threshold: float = 0.95) -> dict
             if not street_number:
                 street_number = parse_street_number(clean_text)
                 # Check if next token is a single letter suffix (e.g., "17" followed by "a")
-                if street_number and i + 1 < len(extracted_texts):
-                    next_token = extracted_texts[i + 1].strip('.,;:()[]"')
+                if street_number and i + 1 < len(combined_texts):
+                    next_token = combined_texts[i + 1].strip('.,;:()[]"')
                     if len(next_token) == 1 and next_token.isalpha():
                         street_number = street_number + next_token
             
