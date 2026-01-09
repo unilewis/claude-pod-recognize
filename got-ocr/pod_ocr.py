@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from multiprocessing import Pool
 from typing import Optional, Tuple
+import gc
 
 # Lazy-load OCR to avoid import overhead when not needed
 _model = None
@@ -53,6 +54,29 @@ def get_ocr():
              _model = _model.float().eval()
 
     return _model, _tokenizer
+
+
+def cleanup_ocr():
+    """Release model/tokenizer and free memory."""
+    global _model, _tokenizer
+    
+    if _model is not None:
+        del _model
+        _model = None
+    
+    if _tokenizer is not None:
+        del _tokenizer
+        _tokenizer = None
+    
+    # Clear CUDA cache if available
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
+    
+    gc.collect()
 
 
 def parse_street_number(text: str) -> Optional[str]:
@@ -199,33 +223,13 @@ def _extract_numbers_impl(image_path: str, confidence_threshold: float = 0.95) -
                     pass
             torch.autocast = MockAutocast
             
-            # Preprocess image for better OCR (sharpening improves detection)
-            import tempfile
-            import numpy as np
-            preprocessed_path = image_path
-            try:
-                img = cv2.imread(image_path)
-                if img is not None:
-                    # Apply sharpening filter
-                    kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-                    sharpened = cv2.filter2D(img, -1, kernel)
-                    # Save to temp file
-                    temp_file = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
-                    cv2.imwrite(temp_file.name, sharpened)
-                    preprocessed_path = temp_file.name
-            except Exception:
-                pass  # Fall back to original image if preprocessing fails
+            # Note: Sharpening preprocessing was removed because it caused regressions
+            # (e.g., pod6.jpg: '68 ORCHARD CLOSE' became 'ORCHARD CLOSE')
+            # The model performs better on original images for most cases.
             
             try:
-                res = model.chat(tokenizer, preprocessed_path, ocr_type='ocr')
+                res = model.chat(tokenizer, image_path, ocr_type='ocr')
             finally:
-                # Clean up temp file if created
-                if preprocessed_path != image_path:
-                    import os as os_mod
-                    try:
-                        os_mod.unlink(preprocessed_path)
-                    except:
-                        pass
                 # Restore patches
                 torch.Tensor.cuda = orig_cuda
                 torch.Tensor.half = orig_half
@@ -347,8 +351,13 @@ def process_batch(image_dir: str, output_file: str = 'results.json') -> dict:
     """Process all images in a directory (single-threaded)."""
     image_paths = list(Path(image_dir).glob('*.jpg')) + list(Path(image_dir).glob('*.jpeg')) + list(Path(image_dir).glob('*.png'))
     results = {}
-    for path in image_paths:
+    import gc
+    total = len(image_paths)
+    for i, path in enumerate(image_paths, 1):
+        if i % 10 == 0 or i == total:
+            print(f"[{i}/{total}] Processing {path.name}...")
         results[path.name] = extract_numbers(str(path))
+        gc.collect()
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
     return results
@@ -396,18 +405,22 @@ def main():
     args = parser.parse_args()
     input_path = Path(args.input)
     
-    if input_path.is_file():
-        result = extract_numbers(str(input_path), args.confidence)
-        print(json.dumps({input_path.name: result}, indent=2))
-    elif input_path.is_dir():
-        if args.workers > 1:
-            results = process_batch_parallel(str(input_path), args.output, args.workers)
+    try:
+        if input_path.is_file():
+            result = extract_numbers(str(input_path), args.confidence)
+            print(json.dumps({input_path.name: result}, indent=2))
+        elif input_path.is_dir():
+            if args.workers > 1:
+                results = process_batch_parallel(str(input_path), args.output, args.workers)
+            else:
+                results = process_batch(str(input_path), args.output)
+            print(f"Processed {len(results)} images. Results saved to {args.output}")
         else:
-            results = process_batch(str(input_path), args.output)
-        print(f"Processed {len(results)} images. Results saved to {args.output}")
-    else:
-        print(f"Error: {args.input} does not exist")
-        exit(1)
+            print(f"Error: {args.input} does not exist")
+            exit(1)
+    finally:
+        # Always cleanup to free memory
+        cleanup_ocr()
 
 
 if __name__ == '__main__':

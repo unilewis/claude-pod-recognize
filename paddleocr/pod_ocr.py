@@ -14,18 +14,33 @@ import os
 from pathlib import Path
 from multiprocessing import Pool
 from typing import Optional, Tuple
+import gc
 
 # Lazy-load OCR to avoid import overhead when not needed
 _ocr_instance = None
 
 
 def get_ocr():
-    """Lazily initialize PaddleOCR instance."""
+    """Lazily initialize PaddleOCR instance with fast mobile models."""
     global _ocr_instance
     if _ocr_instance is None:
         from paddleocr import PaddleOCR
-        _ocr_instance = PaddleOCR(use_textline_orientation=True, lang='en')
+        # Use PP-OCRv4 for faster processing (v3/v4 use mobile models by default)
+        # Disable textline_orientation which adds significant overhead
+        _ocr_instance = PaddleOCR(
+            ocr_version='PP-OCRv4',
+            lang='en',
+        )
     return _ocr_instance
+
+
+def cleanup_ocr():
+    """Release OCR instance and free memory."""
+    global _ocr_instance
+    if _ocr_instance is not None:
+        del _ocr_instance
+        _ocr_instance = None
+    gc.collect()
 
 
 def preprocess_image(image_path: str):
@@ -36,16 +51,23 @@ def preprocess_image(image_path: str):
         image_path: Path to the image file.
         
     Returns:
-        Preprocessed grayscale image with enhanced contrast.
+        Preprocessed image with enhanced contrast and sharpening.
     """
+    import numpy as np
+    import tempfile
+    
     img = cv2.imread(image_path)
     if img is None:
         raise ValueError(f"Could not read image: {image_path}")
     
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # Enhance contrast using histogram equalization
-    enhanced = cv2.equalizeHist(gray)
-    return enhanced
+    # Apply sharpening filter for better text detection
+    kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+    sharpened = cv2.filter2D(img, -1, kernel)
+    
+    # Save to temp file and return path
+    temp_file = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+    cv2.imwrite(temp_file.name, sharpened)
+    return temp_file.name
 
 
 def parse_street_number(text: str) -> Optional[str]:
@@ -82,15 +104,20 @@ def parse_street_name(text: str) -> Optional[str]:
     if re.search(street_types, text, re.IGNORECASE):
         return text.strip()
     
+    normalized = text.strip()
+    
     # Check for standalone proper nouns (potential street names)
-    # Must be alphabetic, start with uppercase, 3+ chars
-    if re.match(r'^[A-Z][a-z]{2,}$', text.strip()):
+    # Match Title Case, ALL CAPS (3+ letters), or ALL CAPS phrases with spaces
+    if re.match(r'^[A-Z][a-z]{2,}$', normalized) or re.match(r'^[A-Z]{3,}$', normalized) or re.match(r'^[A-Z][A-Z\s]+[A-Z]$', normalized):
         # Exclude common non-street words
-        excluded = {'The', 'Dear', 'Customer', 'Proof', 'Delivery', 'Tracking', 'Number', 
+        excluded = {'THE', 'DEAR', 'CUSTOMER', 'PROOF', 'DELIVERY', 'TRACKING', 'NUMBER', 
+                    'WEIGHT', 'SERVICE', 'SHIPPED', 'BILLED', 'DELIVERED', 'LEFT', 
+                    'REFERENCE', 'PLEASE', 'PRINT', 'SINCERELY', 'FRONT', 'DOOR',
+                    'The', 'Dear', 'Customer', 'Proof', 'Delivery', 'Tracking', 'Number', 
                     'Weight', 'Service', 'Shipped', 'Billed', 'Delivered', 'Left', 
                     'Reference', 'Please', 'Print', 'Sincerely', 'Front', 'Door'}
-        if text.strip() not in excluded:
-            return text.strip()
+        if normalized not in excluded and normalized.upper() not in excluded:
+            return normalized
     
     return None
 
@@ -109,7 +136,9 @@ def extract_numbers(image_path: str, confidence_threshold: float = 0.95) -> dict
     start_time = time.time()
     try:
         ocr = get_ocr()
+        
         predict_start = time.time()
+        # PP-OCRv4 uses predict() method
         result = ocr.predict(image_path)
         processing_time = time.time() - predict_start
         
@@ -127,7 +156,7 @@ def extract_numbers(image_path: str, confidence_threshold: float = 0.95) -> dict
         extracted_texts = []
         max_confidence = 0.0
         
-        # New API returns a list of dicts with 'rec_texts' and 'rec_scores'
+        # PP-OCRv4 predict() returns list of dicts with 'rec_texts' and 'rec_scores'
         for page_result in result:
             rec_texts = page_result.get('rec_texts', [])
             rec_scores = page_result.get('rec_scores', [])
@@ -137,15 +166,35 @@ def extract_numbers(image_path: str, confidence_threshold: float = 0.95) -> dict
                     extracted_texts.append(text)
                 max_confidence = max(max_confidence, score)
         
+        # First pass: combine consecutive ALL CAPS tokens with spaces preserved
+        combined_texts = []
+        current_caps_words = []
+        for text in extracted_texts:
+            clean = text.strip('.,;:()[]"')
+            if clean.isupper() and clean.isalpha():
+                current_caps_words.append(clean)
+            else:
+                if current_caps_words:
+                    combined_texts.append(' '.join(current_caps_words))
+                    current_caps_words = []
+                combined_texts.append(clean)
+        if current_caps_words:
+            combined_texts.append(' '.join(current_caps_words))
+        
         # Find street number, street name, and unit number
         street_number = None
         street_name = None
         unit_number = None
         street_names = []  # Collect all potential street name parts
         
-        for text in extracted_texts:
+        for i, text in enumerate(combined_texts):
             if not street_number:
                 street_number = parse_street_number(text)
+                # Check if next token is a single letter suffix (e.g., "17" followed by "a")
+                if street_number and i + 1 < len(combined_texts):
+                    next_token = combined_texts[i + 1].strip('.,;:()[]"')
+                    if len(next_token) == 1 and next_token.isalpha():
+                        street_number = street_number + next_token
             if not unit_number:
                 unit_number = parse_unit_number(text)
             # Collect street name parts
@@ -209,8 +258,13 @@ def process_batch(image_dir: str, output_file: str = 'results.json') -> dict:
     image_paths = list(Path(image_dir).glob('*.jpg')) + list(Path(image_dir).glob('*.jpeg')) + list(Path(image_dir).glob('*.png'))
     
     results = {}
-    for path in image_paths:
+    import gc
+    total = len(image_paths)
+    for i, path in enumerate(image_paths, 1):
+        if i % 10 == 0 or i == total:
+            print(f"[{i}/{total}] Processing {path.name}...")
         results[path.name] = extract_numbers(str(path))
+        gc.collect()
     
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
@@ -266,8 +320,8 @@ def main():
     parser.add_argument(
         '-w', '--workers',
         type=int,
-        default=4,
-        help='Number of parallel workers for batch processing (default: 4)'
+        default=1,
+        help='Number of parallel workers for batch processing (default: 1, use higher values with caution on memory-limited systems)'
     )
     parser.add_argument(
         '-c', '--confidence',
@@ -279,20 +333,24 @@ def main():
     args = parser.parse_args()
     input_path = Path(args.input)
     
-    if input_path.is_file():
-        # Single image
-        result = extract_numbers(str(input_path), args.confidence)
-        print(json.dumps({input_path.name: result}, indent=2))
-    elif input_path.is_dir():
-        # Batch processing
-        if args.workers > 1:
-            results = process_batch_parallel(str(input_path), args.output, args.workers)
+    try:
+        if input_path.is_file():
+            # Single image
+            result = extract_numbers(str(input_path), args.confidence)
+            print(json.dumps({input_path.name: result}, indent=2))
+        elif input_path.is_dir():
+            # Batch processing
+            if args.workers > 1:
+                results = process_batch_parallel(str(input_path), args.output, args.workers)
+            else:
+                results = process_batch(str(input_path), args.output)
+            print(f"Processed {len(results)} images. Results saved to {args.output}")
         else:
-            results = process_batch(str(input_path), args.output)
-        print(f"Processed {len(results)} images. Results saved to {args.output}")
-    else:
-        print(f"Error: {args.input} does not exist")
-        exit(1)
+            print(f"Error: {args.input} does not exist")
+            exit(1)
+    finally:
+        # Always cleanup to free memory
+        cleanup_ocr()
 
 
 if __name__ == '__main__':

@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from multiprocessing import Pool
 from typing import Optional, Tuple
+import gc
 
 # Lazy-load OCR to avoid import overhead when not needed
 _ocr_instance = None
@@ -28,6 +29,15 @@ def get_ocr():
         # gpu=True/False will be automatically determined or can be explicit
         _ocr_instance = easyocr.Reader(['en'])
     return _ocr_instance
+
+
+def cleanup_ocr():
+    """Release OCR reader and free memory."""
+    global _ocr_instance
+    if _ocr_instance is not None:
+        del _ocr_instance
+        _ocr_instance = None
+    gc.collect()
 
 
 def preprocess_image(image_path: str):
@@ -271,8 +281,8 @@ def main():
     parser.add_argument(
         '-w', '--workers',
         type=int,
-        default=4,
-        help='Number of parallel workers for batch processing (default: 4)'
+        default=1,
+        help='Number of parallel workers for batch processing (default: 1, use higher values with caution on memory-limited systems)'
     )
     parser.add_argument(
         '-c', '--confidence',
@@ -284,20 +294,24 @@ def main():
     args = parser.parse_args()
     input_path = Path(args.input)
     
-    if input_path.is_file():
-        # Single image
-        result = extract_numbers(str(input_path), args.confidence)
-        print(json.dumps({input_path.name: result}, indent=2))
-    elif input_path.is_dir():
-        # Batch processing
-        if args.workers > 1:
-            results = process_batch_parallel(str(input_path), args.output, args.workers)
+    try:
+        if input_path.is_file():
+            # Single image
+            result = extract_numbers(str(input_path), args.confidence)
+            print(json.dumps({input_path.name: result}, indent=2))
+        elif input_path.is_dir():
+            # Batch processing
+            if args.workers > 1:
+                results = process_batch_parallel(str(input_path), args.output, args.workers)
+            else:
+                results = process_batch(str(input_path), args.output)
+            print(f"Processed {len(results)} images. Results saved to {args.output}")
         else:
-            results = process_batch(str(input_path), args.output)
-        print(f"Processed {len(results)} images. Results saved to {args.output}")
-    else:
-        print(f"Error: {args.input} does not exist")
-        exit(1)
+            print(f"Error: {args.input} does not exist")
+            exit(1)
+    finally:
+        # Always cleanup to free memory
+        cleanup_ocr()
 
 
 if __name__ == '__main__':
