@@ -83,23 +83,25 @@ Once processing is complete, the worker can optionally:
 This visualization shows how the components are deployed on a single GPU-accelerated EC2 instance.
 
 ```mermaid
-graph TB
+graph LR
     subgraph EC2["EC2 Instance (g4dn.xlarge)"]
         subgraph HostOS["Host Linux OS"]
+            direction LR
             Driver["NVIDIA Drivers"]
             Toolkit["NVIDIA Container Toolkit"]
             Docker["Docker / Docker Compose"]
 
             subgraph Containers["Container Network"]
-                Java["Java Consumer Worker (JDK 25)"]
-                Python["Python OCR Sidecar (PaddleOCR)"]
+                direction LR
+                Java["Consumer Worker"]
+                Python["Python OCR Sidecar (PaddleOCR/GOT-OCR2.0)"]
             end
         end
     end
 
     S3[("AWS S3")]
-    Redis[("Redis Queue")]
-    DB[("PostgreSQL")]
+    Redis[("Queue")]
+    DB[("MySQL")]
 
     Java <-->|Local Loopback| Python
     Java --- S3

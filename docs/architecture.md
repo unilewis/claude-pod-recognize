@@ -6,19 +6,19 @@ To achieve 1M/day throughput reliably, we use a **Producer-Consumer** pattern. T
 
 ```mermaid
 graph TD
-    User([External App / User]) -->|Upload Image| API[Producer: FastAPI]
+    User([External App / User]) -->|Image| API[Producer: FastAPI]
     API -->|1. Store Image| S3[Object Storage: S3/MinIO]
     API -->|2. Push Job| Queue[(Message Queue: Redis/BullMQ)]
 
-    subgraph "GPU Worker Pool"
-        Worker[Consumer: Python Worker]
-        W2[Consumer: Python Worker]
+    subgraph "GPU VM"
+        Worker[Consumer: Worker]
+        W2[Consumer: Worker]
     end
 
     Queue -->|3. Pull Jobs in Batches| Worker
     Worker -->|4. Get Image| S3
     Worker -->|5. OCR Inference| GPU[NVIDIA GPU / CUDA]
-    Worker -->|6. Save Result| DB[(Database: PostgreSQL)]
+    Worker -->|6. Save Result| DB[(Database: MySQL)]
 
     Worker -->|7. Notify| Hooks[Webhooks / Push]
 ```

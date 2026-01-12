@@ -6,24 +6,18 @@ The Python Sidecar is a lightweight FastAPI wrapper around the `pod_ocr.py` scri
 
 ```mermaid
 graph LR
-    subgraph "Main Container (Spring Boot)"
-        Worker[Java Worker]
-        Client[HTTP/REST Client]
+
+    subgraph "OCR Container (Python)"
+        direction LR
+        API[FastAPI] --> Logic[Image Processing]
+        Logic --> Pre[Text Detection]
+        Pre --> Model[[OCR Recognition]]
+        Model --> Post[Validation]
+        Post -.->|Extracted JSON| API
     end
 
-    subgraph "Sidecar Container (Python)"
-        API[FastAPI / Uvicorn]
-        Logic[OCR Logic Wrapper]
-        Pre[OpenCV Preprocessing]
-        Model[PaddleOCR Engine]
-    end
-
-    Client -->|1. POST Image Bytes| API
-    API --> Logic
-    Logic --> Pre
-    Pre --> Model
-    Model -->|2. Extracted JSON| API
-    API -->|3. Response| Client
+    style Model fill:#FA6800 
+    style Model font-weight:bold,font-size:24px
 ```
 
 ## 2. Component Responsibilities
