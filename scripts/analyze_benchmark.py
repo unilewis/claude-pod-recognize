@@ -15,7 +15,7 @@ def parse_benchmark_log(log_path):
         content = f.read()
     
     # Pattern to match engine results like [PaddleOCR] pod_001.jpg: { ... }
-    pattern = r'\[(\w+(?:-\w+)?)\] (pod_\d+\.jpg): (\{[\s\S]*?\n\})'
+    pattern = r'\[([^\]]+)\] (pod_?\d+\.(?:jpg|jpeg|png)): (\{[\s\S]*?\n\})'
     
     matches = re.findall(pattern, content)
     
@@ -56,8 +56,8 @@ def generate_grouped_table(results):
     # Define column widths
     col_widths = {
         'image': 14,
-        'engine': 11,
-        'street_num': 12,
+        'engine': 25,
+        'street_num': 20,
         'street_name': 32,
         'unit': 8,
         'conf': 6,
@@ -184,7 +184,7 @@ def generate_analysis(results):
 
 def main():
     if len(sys.argv) < 2:
-        log_path = "/Users/llewis/Code/claude-pod-recognize/logs/benchmark_results_20260108_212612.log"
+        log_path = "/Users/llewis/Code/claude-pod-recognize/logs/benchmark_20260108_212612_results.log"
     else:
         log_path = sys.argv[1]
     

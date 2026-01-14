@@ -5,7 +5,7 @@
 IMAGE_DIR="${1:-./images}"
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 LOG_DIR="logs"
-LOG_FILE="$LOG_DIR/benchmark_results_$TIMESTAMP.log"
+LOG_FILE="$LOG_DIR/benchmark_${TIMESTAMP}_results.log"
 
 # Create logs directory if it doesn't exist
 mkdir -p "$LOG_DIR"

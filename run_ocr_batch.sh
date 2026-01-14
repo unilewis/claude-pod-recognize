@@ -3,7 +3,8 @@
 
 # Configuration
 IMAGE_DIR="${1:-./images}"
-LOG_FILE="${2:-ocr_results.log}"
+DEFAULT_TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
+LOG_FILE="${2:-logs/ocr_batch_${DEFAULT_TIMESTAMP}_results.log}"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
 echo "========================================" | tee -a "$LOG_FILE"

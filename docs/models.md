@@ -21,7 +21,7 @@ The following models are supported via [Ollama](https://ollama.com):
 - `qwen3-vl:8b`: Default. Good balance of speed and visual reasoning.
 - `blaifa/InternVL3`: Strong Chinese/English capabilities.
 - `deepseek-ocr`: Specialized for text-heavy images.
-- `llama4:scout`: General purpose multimodal.
+- `blaifa/InternVL3_5:8b`: Advanced multimodal capabilities (replacing llama4).
 
 #### Usage
 
