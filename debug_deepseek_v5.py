@@ -9,11 +9,10 @@ def encode_image(image_path):
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 def test(model):
-    print(f"Testing {model} with extraction prompt")
+    print(f"Testing {model} with prompt 'Extract the text in the image.'")
     b64 = encode_image("images/pod1.jpg")
     
-    # Trying to get text content
-    prompt_text = "<|grounding|>Where is the delivery address?"
+    prompt_text = "Extract the text in the image."
     
     payload = {
         "model": model,

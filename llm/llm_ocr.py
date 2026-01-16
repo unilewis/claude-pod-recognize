@@ -56,7 +56,7 @@ def extract_address(image_path, model, host="http://localhost:11434"):
 
     # DeepSeek-OCR specific prompt
     if "deepseek-ocr" in model:
-        prompt = "<|grounding|>Extract the delivery address details."
+        prompt = "Extract the text in the image."
         
     payload = {
         "model": model,
@@ -76,24 +76,10 @@ def extract_address(image_path, model, host="http://localhost:11434"):
         result = response.json()
         raw_response = result.get("response", "")
         
-        # DeepSeek-OCR specific parsing (returns <|ref|>...<|/det|> content)
+        # DeepSeek-OCR specific: Parse the extracted text using a stronger logical model (Ministral)
         if "deepseek-ocr" in model:
-            import re
-            # Remove tags like <|ref|>...<|/det|>
-            cleaned_text = re.sub(r'<\|.*?\|>', '', raw_response)
-            # Remove bounding box coords like [[123, 456, ...]]
-            cleaned_text = re.sub(r'\[\[.*?\]\]', '', cleaned_text)
-            # Clean up extra whitespace lines
-            lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
-            full_text = " ".join(lines)
-            
-            # Return as simple structure since we can't easily parse fields without LLM post-processing
-            return {
-                "street_number": None,
-                "street_name": full_text[:100] + "..." if len(full_text) > 100 else full_text, # Truncate for display
-                "unit_number": None, 
-                "full_text": full_text
-            }
+            full_text = raw_response.strip()
+            return parse_address_from_text(full_text, host)
         
         # Fallback for models that put output in 'thinking' (like Qwen sometimes)
         if not raw_response and result.get("thinking"):
@@ -108,12 +94,42 @@ def extract_address(image_path, model, host="http://localhost:11434"):
             
         return json.loads(cleaned_response)
 
+
+
     except requests.exceptions.ConnectionError:
         raise ConnectionError(f"Could not connect to Ollama at {host}. Is it running?")
     except json.JSONDecodeError:
         raise ValueError(f"Model did not return valid JSON. Full API Result: {result}")
     except Exception as e:
         raise RuntimeError(f"Extraction failed: {e}")
+
+def parse_address_from_text(text, host):
+    """Uses a lightweight LLM to parse address components from raw OCR text."""
+    prompt = f"""
+    Extract the address details from the following OCR text.
+    Return ONLY a valid JSON object with keys: "street_number", "street_name", "unit_number".
+        
+    OCR Text:
+    {text}
+    """
+    
+    payload = {
+        "model": "ministral-3:8b",
+        "prompt": prompt,
+        "stream": False,
+        "format": "json"
+    }
+    
+    try:
+        response = requests.post(f"{host}/api/generate", json=payload)
+        response.raise_for_status()
+        return json.loads(response.json().get("response", "{}"))
+    except Exception:
+        return {
+            "street_number": None,
+            "street_name": text[:100], 
+            "unit_number": None
+        }
 
 import time
 

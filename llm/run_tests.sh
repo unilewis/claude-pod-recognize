@@ -9,6 +9,8 @@ MODELS=(
     "blaifa/InternVL3_5:8b" 
     "qwen3-vl:8b" 
     "gemma3:4b"
+    "devstral-small-2:24b"
+    "deepseek-ocr:latest"
 )
 IMAGES_DIR=${IMAGES_DIR:-"images"}
 OLLAMA_HOST=${OLLAMA_HOST:-"http://192.168.86.193:11434"}
